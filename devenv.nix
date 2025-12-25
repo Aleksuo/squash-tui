@@ -7,6 +7,12 @@
   # https://devenv.sh/packages/
   packages = [ pkgs.git ];
 
+  languages.rust = {
+    enable = true;
+    channel = "stable";
+    version = "1.92.0";
+  };
+
   # https://devenv.sh/languages/
   # languages.rust.enable = true;
 
