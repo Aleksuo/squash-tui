@@ -5,6 +5,7 @@ use ratatui::{
     DefaultTerminal,
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
+    style::Stylize,
     symbols::border,
     text::Line,
     widgets::{Block, List, ListItem, Paragraph, Widget},
@@ -14,17 +15,19 @@ use ratatui::{
 pub struct App {
     exit: bool,
     branches: Vec<String>,
+    selected_branch_index: Option<usize>,
+    selector_cursor_index: usize,
 }
 
 impl App {
     pub fn init(&mut self) -> color_eyre::Result<()> {
         color_eyre::install()?;
         self.branches = Vec::new();
+        self.selected_branch_index = None;
         let repo = Repository::open_from_env()?;
         for branch_and_type in repo.branches(None)? {
             let (branch, _type) = branch_and_type?;
             let name = branch.name()?.unwrap();
-            print!("{name}");
             self.branches.push(name.to_string());
         }
         Ok(())
@@ -53,8 +56,41 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
+            KeyCode::Char('j') => self.select_next(),
+            KeyCode::Char('k') => self.select_previous(),
+            KeyCode::Enter => self.select_current(),
             _ => {}
         }
+    }
+
+    fn select_next(&mut self) {
+        let mut cur = self.selector_cursor_index;
+        let len = self.branches.len();
+        cur += 1;
+        if cur >= len {
+            self.selector_cursor_index = 0;
+            return;
+        }
+        self.selector_cursor_index = cur;
+    }
+
+    fn select_previous(&mut self) {
+        let mut cur = self.selector_cursor_index;
+        let len = self.branches.len();
+        if len == 0 {
+            return;
+        }
+        if cur == 0 {
+            self.selector_cursor_index = len - 1;
+            return;
+        }
+        cur -= 1;
+
+        self.selector_cursor_index = cur;
+    }
+
+    fn select_current(&mut self) {
+        self.selected_branch_index = Some(self.selector_cursor_index);
     }
 
     fn exit(&mut self) {
@@ -76,11 +112,18 @@ impl App {
     }
 
     fn render_branches(&mut self, area: Rect, buf: &mut Buffer) {
-        let branch_items: Vec<ListItem> = self
-            .branches
-            .iter()
-            .map(|b| ListItem::new(b.as_str()))
-            .collect();
+        let mut branch_items: Vec<ListItem> = Vec::new();
+        for (i, branch_name) in self.branches.iter().enumerate() {
+            let mut is_selected = false;
+            if let Some(branch_index) = self.selected_branch_index {
+                is_selected = branch_index == i;
+            }
+            branch_items.push(Self::render_branch(
+                is_selected,
+                branch_name.to_string(),
+                self.selector_cursor_index == i,
+            ));
+        }
 
         List::new(branch_items)
             .block(
@@ -89,6 +132,23 @@ impl App {
                     .border_set(border::DOUBLE),
             )
             .render(area, buf);
+    }
+
+    fn render_branch(
+        is_selected: bool,
+        branch_name: String,
+        is_pointed: bool,
+    ) -> ListItem<'static> {
+        let mut display_name = branch_name;
+        if is_selected {
+            display_name = format!("► {}", display_name);
+        } else {
+            display_name = format!("  {}", display_name);
+        }
+        if is_pointed {
+            return ListItem::new(display_name).blue();
+        }
+        return ListItem::new(display_name);
     }
 
     fn render_commits(&mut self, area: Rect, buf: &mut Buffer) {
